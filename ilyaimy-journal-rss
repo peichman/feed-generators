@@ -1,0 +1,93 @@
+#!/usr/bin/perl -w
+use strict;
+
+use XML::RSS::SimpleGen;
+use WWW::Mechanize;
+
+my $INTRO_URL = 'http://ilyaimy.com/journal/intro.html';
+my $RECENT_LIMIT = 12;
+my $OUTPUT_FILE  = shift || 'public_html/ilyaimy-journal.rss';
+
+my $mech = WWW::Mechanize->new;
+
+# start with the intro page, and go to "now"
+$mech->get($INTRO_URL);
+#warn "got now: " . $mech->uri;
+$mech->follow_link(text => 'now');
+
+# check forward, in case "now" is not the most recent day
+while (1) {
+    my $next = $mech->find_link(text => 'next');
+    if ($next->url ne '#') {
+    #warn "going forward to " . $next->url;
+        $mech->get($next->url);
+    } else {
+        $mech->back;
+        last;
+    }
+}
+#warn "starting at " . $mech->uri;
+
+my $DATE_PATTERN = qr{
+    (
+    (?:January|February|March|April|May|June|July|August|September|October|November|December)
+    \s+
+    \d+
+    (?:st|nd|rd|th)
+    ,
+    \s+
+    \d{4}
+    )
+}x;
+
+# find and record the datelines on each page
+my @recent;
+while (@recent <= $RECENT_LIMIT) {
+    local $_ = $mech->text;
+    # truncate the text at the start of the footer
+    s/table of contents.*$//;
+    # match the date headings on this page
+    my @this_page;
+    while (m{$DATE_PATTERN\.\s*((?:\S+\s+){1,50})}g) {
+        push @this_page, {
+            href => $mech->uri,
+            title => $1,
+            # the first 50 words of the entry
+            snippet => $2,
+        };
+        #warn "added " . $mech->uri;
+    }
+    push @recent, reverse @this_page;
+    # step back one page in the journal
+    my $back = $mech->find_link(text => 'back');
+    if ($back->url ne '#') {
+        $mech->follow_link(text => 'back');
+        #warn "gone back to " . $mech->uri;
+    } else {
+        # bail out if the "back" link is "#"
+        # since that puts us in an infinite loop
+        last;
+        # TODO: figure out a better response
+        # (maybe try to guess the back URI?)
+    }
+}
+
+# debugging
+#use YAML;
+#print Dump(\@recent);
+
+rss_new($INTRO_URL, 'the ilyAIMY Journal', 'i love you And I Miss You: the travels of rob hinkal & heather lloyd');
+rss_language('en');
+rss_webMaster('peichman@chesapeake.net');
+rss_daily;
+rss_updateHours(0);
+# because sometimes multiple day headings appear on the same URL
+rss_allow_duplicates(1);
+
+for my $item (@recent) {
+    rss_item($item->{href}, $item->{title}, $item->{snippet} . '...');
+}
+
+rss_save($OUTPUT_FILE);
+
+=cut

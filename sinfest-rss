@@ -1,0 +1,28 @@
+#!/usr/bin/perl -w
+use strict;
+
+use XML::RSS::SimpleGen;
+use WWW::Mechanize;
+
+my $SITE_URL     = 'http://sinfest.net';
+my $ARCHIVE_URL  = 'http://sinfest.net/archiveb.php';
+my $RECENT_LIMIT = 12;
+my $OUTPUT_FILE  = shift || 'public_html/sinfest.rss';
+
+my $mech = WWW::Mechanize->new;
+$mech->get($ARCHIVE_URL);
+
+my @all_links = $mech->find_all_links(url_regex => qr/view\.php/);
+my @recent = splice @all_links, 0 - $RECENT_LIMIT;
+
+rss_new($SITE_URL, 'Sinfest', 'Sinfest');
+rss_language('en');
+rss_webMaster('peichman@chesapeake.net');
+rss_daily;
+rss_updateHours(0);
+
+for my $item (reverse @recent) {
+    rss_item($item->url_abs, $item->attrs->{title});
+}
+
+rss_save($OUTPUT_FILE);
