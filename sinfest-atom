@@ -1,0 +1,46 @@
+#!/usr/bin/perl -w
+use strict;
+
+use WWW::Mechanize;
+use XML::Atom::Feed;
+use XML::Atom::Entry;
+use XML::Atom;
+use URI::QueryParam;
+
+$XML::Atom::DefaultVersion = "1.0";
+
+my $SITE_URL     = 'http://sinfest.net';
+my $ARCHIVE_URL  = 'http://sinfest.net/archiveb.php';
+my $RECENT_LIMIT = 12;
+
+my $TAG_AUTHORITY = 'echodin.net,2011-08-01';
+
+my $mech = WWW::Mechanize->new;
+$mech->get($ARCHIVE_URL);
+
+my @all_links = $mech->find_all_links(url_regex => qr/view\.php/);
+my @recent = splice @all_links, 0 - $RECENT_LIMIT;
+
+my $feed = XML::Atom::Feed->new;
+$feed->title('Sinfest');
+$feed->id('https://echodin.net/feeds/sinfest.atom');
+$feed->language('en');
+
+for my $item (reverse @recent) {
+    my $url = $item->url_abs;
+    my $date = $url->query_param('date');
+
+    my $entry = XML::Atom::Entry->new;
+    $entry->title($item->attrs->{title});
+    $entry->id(sprintf('tag:%s:feeds/%s/%s', $TAG_AUTHORITY, $url->authority, $date));
+    $entry->issued($date);
+
+    my $link = XML::Atom::Link->new;
+    $link->type('text/html');
+    $link->href($url);
+    $entry->add_link($link);
+
+    $feed->add_entry($entry);
+}
+
+print $feed->as_xml;
