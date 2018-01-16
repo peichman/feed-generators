@@ -1,0 +1,53 @@
+#!/usr/bin/perl -w
+use strict;
+
+use WWW::Mechanize;
+use XML::Atom::Feed;
+use XML::Atom::Entry;
+use XML::Atom;
+
+$XML::Atom::DefaultVersion = "1.0";
+
+my $ARCHIVE_URL  = 'https://apod.nasa.gov/apod/archivepix.html';
+my $RECENT_LIMIT = 12;
+
+my $TAG_AUTHORITY = 'echodin.net,2011-08-01';
+
+my $mech = WWW::Mechanize->new;
+$mech->get($ARCHIVE_URL);
+
+my @all_links = $mech->find_all_links(url_regex => qr/ap\d{6}\.html/);
+my @recent = @all_links[0 .. $RECENT_LIMIT - 1];
+
+my $feed = XML::Atom::Feed->new;
+$feed->title('Astronomy Picture of the Day');
+$feed->id('https://echodin.net/feeds/apod.atom');
+$feed->language('en');
+
+my $link = XML::Atom::Link->new;
+$link->type('text/html');
+$link->rel('source');
+$link->href($ARCHIVE_URL);
+$feed->add_link($link);
+
+for my $item (@recent) {
+    my $url = $item->url_abs;
+    my ($yy, $mm, $dd) = ($item->url =~ /ap(\d\d)(\d\d)(\d\d)\.html/);
+    my $date = "20$yy-$mm-$dd";
+    # fill in missing apostrophes in the title
+    (my $title = $item->text) =~ s/(\w) s/$1's/;
+
+    my $entry = XML::Atom::Entry->new;
+    $entry->title($title);
+    $entry->id(sprintf('tag:%s:feeds/%s/%s', $TAG_AUTHORITY, $url->authority, $date));
+    $entry->issued($date);
+
+    my $link = XML::Atom::Link->new;
+    $link->type('text/html');
+    $link->href($url);
+    $entry->add_link($link);
+
+    $feed->add_entry($entry);
+}
+
+print $feed->as_xml;
